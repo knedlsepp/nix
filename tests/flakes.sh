@@ -25,8 +25,19 @@ templatesDir=$TEST_ROOT/templates
 nonFlakeDir=$TEST_ROOT/nonFlake
 flakeA=$TEST_ROOT/flakeA
 flakeB=$TEST_ROOT/flakeB
+flakeWithSubmodulesDir=$TEST_ROOT/flakeWithSubmodules
 
-for repo in $flake1Dir $flake2Dir $flake3Dir $flake7Dir $templatesDir $nonFlakeDir $flakeA $flakeB; do
+for repo in \
+  $flake1Dir \
+  $flake2Dir \
+  $flake3Dir \
+  $flake7Dir \
+  $templatesDir \
+  $nonFlakeDir \
+  $flakeA \
+  $flakeB \
+  $flakeWithSubmodulesDir;
+  do
     rm -rf $repo $repo.tmp
     mkdir $repo
     git -C $repo init
@@ -155,13 +166,40 @@ cat > $registry <<EOF
         "type": "git",
         "url": "file://$templatesDir"
       }
+    },
+    { "from": {
+        "type": "indirect",
+        "id": "flakeWithSubmodules"
+      },
+      "to": {
+        "type": "git",
+        "url": "file://$flakeWithSubmodulesDir"
+      }
     }
   ]
 }
 EOF
 
+cat > $flakeWithSubmodulesDir/flake.nix <<EOF
+{
+  description = "Bla bla";
+
+  outputs = inputs: rec {
+    packages.$system.foo = import ./flake1/simple.nix;
+    defaultPackage.$system = packages.$system.foo;
+
+    # To test "nix flake init".
+    legacyPackages.x86_64-linux.hello = import ./flake1/simple.nix;
+  };
+}
+EOF
+
+git -C $flakeWithSubmodulesDir add flake.nix
+git -C $flakeWithSubmodulesDir submodule add $flake1Dir
+git -C $flakeWithSubmodulesDir commit -m 'Initial'
+
 # Test 'nix flake list'.
-[[ $(nix registry list | wc -l) == 7 ]]
+[[ $(nix registry list | wc -l) == 8 ]]
 
 # Test 'nix flake info'.
 nix flake info flake1 | grep -q 'URL: .*flake1.*'
@@ -400,11 +438,11 @@ nix build -o $TEST_ROOT/result flake4/removeXyzzy#sth
 
 # Testing the nix CLI
 nix registry add flake1 flake3
-[[ $(nix registry list | wc -l) == 8 ]]
+[[ $(nix registry list | wc -l) == 9 ]]
 nix registry pin flake1
-[[ $(nix registry list | wc -l) == 8 ]]
+[[ $(nix registry list | wc -l) == 9 ]]
 nix registry remove flake1
-[[ $(nix registry list | wc -l) == 7 ]]
+[[ $(nix registry list | wc -l) == 8 ]]
 
 # Test 'nix flake init'.
 cat > $templatesDir/flake.nix <<EOF
@@ -716,3 +754,7 @@ git -C $flakeB commit -a -m 'Foo'
 
 # Test list-inputs with circular dependencies
 nix flake list-inputs $flakeA
+
+# Test that git submodules work
+nix build -o $TEST_ROOT/result $flakeWithSubmodulesDir
+nix build -o $TEST_ROOT/result git+file://$flakeWithSubmodulesDir
