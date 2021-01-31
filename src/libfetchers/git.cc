@@ -45,6 +45,8 @@ struct GitInputScheme : InputScheme
                 attrs.emplace(name, value);
             else if (name == "shallow")
                 attrs.emplace(name, Explicit<bool> { value == "1" });
+            else if (name == "submodules")
+                attrs.emplace(name, Explicit<bool> { value == "1" });
             else
                 url2.query.emplace(name, value);
         }
